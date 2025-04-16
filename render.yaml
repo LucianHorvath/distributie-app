@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: distributie-api
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: "python api_server.py"
