@@ -6,7 +6,7 @@ from datetime import datetime
 import os
 
 app = Flask(__name__)
-CORS(app)  # permite cereri din alte aplicații (ex: WordPress)
+CORS(app)
 
 DB_PATH = 'distributie_en_gros.db'
 
@@ -63,33 +63,31 @@ def api_comenzi():
 
 @app.route('/api/comanda', methods=['POST'])
 def trimite_comanda():
-    comanda = request.get_json()
-    client_id = comanda.get("client_id")
-    produse = comanda.get("produse", [])
+    if request.content_type != 'application/xml':
+        return "Unsupported Media Type", 415
 
-    if not client_id or not produse:
-        return jsonify({"status": "eroare", "mesaj": "Date lipsă"}), 400
+    try:
+        xml_data = request.data.decode('utf-8')
+        root = ET.fromstring(xml_data)
 
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    nume_fisier = f"comanda_{timestamp}.xml"
-    cale_fisier = os.path.join("comenzi", nume_fisier)
+        client_id = root.findtext('Client')
+        total = root.findtext('Total')
+        produse_elem = root.find('Produse')
 
-    os.makedirs("comenzi", exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        nume_fisier = f"comanda_{timestamp}.xml"
+        os.makedirs("comenzi", exist_ok=True)
+        cale_fisier = os.path.join("comenzi", nume_fisier)
 
-    root = ET.Element("comanda", attrib={"client_id": str(client_id)})
+        with open(cale_fisier, 'w', encoding='utf-8') as f:
+            f.write(xml_data)
 
-    for produs in produse:
-        p_elem = ET.SubElement(root, "produs")
-        ET.SubElement(p_elem, "id").text = str(produs.get("id"))
-        ET.SubElement(p_elem, "nume").text = produs.get("nume")
-        ET.SubElement(p_elem, "pret").text = str(produs.get("pret"))
-        ET.SubElement(p_elem, "cantitate").text = str(produs.get("cantitate"))
-        ET.SubElement(p_elem, "subtotal").text = str(produs.get("subtotal"))
+        print(f"[✔] Comandă salvată: {nume_fisier}")
+        return "Comanda a fost trimisă cu succes!", 200
 
-    tree = ET.ElementTree(root)
-    tree.write(cale_fisier, encoding="utf-8", xml_declaration=True)
-
-    return jsonify({"status": "ok", "fisier": nume_fisier})
+    except Exception as e:
+        print("[Eroare XML]", str(e))
+        return f"Eroare la procesare XML: {e}", 400
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5050, debug=True)
